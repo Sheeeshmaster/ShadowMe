@@ -1,0 +1,948 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Search,
+  Building2,
+  BadgeCheck,
+  Calendar,
+  MapPin,
+  GraduationCap,
+  Briefcase,
+  Clock,
+  ChevronRight,
+  Plus,
+  Star,
+  Filter,
+  Mail,
+  Phone,
+  ExternalLink,
+  CheckCircle2,
+  Menu,
+  X,
+  Sparkles,
+  ShieldCheck,
+  Users,
+  Globe,
+  Layers,
+  Wand2,
+  Settings,
+  Upload,
+  ArrowRight,
+  Bookmark,
+  BadgeHelp,
+  Trash2,
+  Edit3,
+  LogIn,
+  LogOut,
+  Shield,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+
+// 🔐 Firebase (Auth + Firestore)
+// 1) npm i firebase
+// 2) Create a Firebase project at https://console.firebase.google.com
+// 3) Enable Authentication (Email/Password + optionally Google) and Firestore Database
+// 4) Replace the config below with your Firebase web app config
+import { initializeApp } from "firebase/app";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
+
+// --- Replace with your Firebase config ---
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/**
+ * ShadowMe — Single-file demo app w/ Admin, Auth & Firestore
+ * Goals:
+ *  - Students find & book job shadow opportunities in ≤ 5 clicks from landing.
+ *  - Admin-only CRUD for Categories & Companies via Firebase Auth + Firestore.
+ *  - Professional palette, accessible, mobile-first, keyboard-friendly.
+ */
+
+// --- Static seed (used as fallback until Firestore is populated) ---
+const SEED_CATEGORIES = [
+  { id: "engineering", name: "Engineering", icon: Layers },
+  { id: "medicine", name: "Medicine", icon: ShieldCheck },
+  { id: "law", name: "Law", icon: BadgeCheck },
+  { id: "finance", name: "Finance", icon: Briefcase },
+  { id: "it", name: "Software & IT", icon: Sparkles },
+  { id: "design", name: "Design", icon: Wand2 },
+  { id: "science", name: "Science", icon: GraduationCap },
+  { id: "marketing", name: "Marketing", icon: Globe },
+];
+
+const SEED_COMPANIES = [
+  {
+    id: "c1",
+    name: "Apex Engineering Group",
+    category: "engineering",
+    location: "Johannesburg, ZA",
+    rating: 4.8,
+    seats: 6,
+    verified: true,
+    badges: ["Safety Briefing", "Hands-on Lab", "Certificate"],
+    description:
+      "Shadow civil and mechanical engineers on live infrastructure projects. Includes site visits and CAD exposure.",
+    contacts: { email: "hr@apexeng.co.za", phone: "+27 10 555 0123" },
+    nextDates: ["2025-08-25", "2025-09-01", "2025-09-08"],
+  },
+  {
+    id: "c2",
+    name: "NetCrafters Software Studio",
+    category: "it",
+    location: "Cape Town, ZA",
+    rating: 4.6,
+    seats: 10,
+    verified: true,
+    badges: ["Code Along", "Mentor 1:1", "Portfolio Review"],
+    description:
+      "Spend a week with full‑stack teams shipping features. Learn agile, Git, and cloud deployment basics.",
+    contacts: { email: "talent@netcrafters.io", phone: "+27 21 600 4422" },
+    nextDates: ["2025-08-28", "2025-09-04"],
+  },
+  {
+    id: "c3",
+    name: "Ubuntu Legal Chambers",
+    category: "law",
+    location: "Durban, ZA",
+    rating: 4.7,
+    seats: 3,
+    verified: false,
+    badges: ["Court Visit", "Case Research"],
+    description:
+      "Observe client interviews, research case law, and understand litigation workflows with our associates.",
+    contacts: { email: "info@ubuntu-legal.africa", phone: "+27 31 331 7788" },
+    nextDates: ["2025-08-26", "2025-09-09"],
+  },
+  {
+    id: "c4",
+    name: "GreenLeaf Medical Centre",
+    category: "medicine",
+    location: "Pretoria, ZA",
+    rating: 4.9,
+    seats: 2,
+    verified: true,
+    badges: ["Ward Round", "Lab Tour", "Ethics Brief"],
+    description:
+      "Join doctors across departments to learn triage, basic vitals, and ethical practice in healthcare.",
+    contacts: { email: "careers@greenleafmed.org", phone: "+27 12 880 2200" },
+    nextDates: ["2025-08-22", "2025-08-29", "2025-09-05"],
+  },
+];
+
+// Utility: format date
+const fmt = (d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+// Track user click path toward a booking (5‑click rule visual)
+function useClickPath(max = 5) {
+  const [count, setCount] = useState(0);
+  const [active, setActive] = useState(false);
+  const inc = () => active && setCount((c) => Math.min(max, c + 1));
+  const reset = () => { setActive(true); setCount(0); };
+  return { count, inc, reset, active, setActive, max };
+}
+
+// Firestore Hooks
+function useCategories() {
+  const [cats, setCats] = useState([]);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "categories"), (snap) => {
+      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setCats(arr);
+    }, () => setCats([]));
+    return () => unsub();
+  }, []);
+  // Fallback to seed if Firestore empty
+  return cats.length ? cats : SEED_CATEGORIES;
+}
+
+function useCompanies() {
+  const [comps, setComps] = useState([]);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "companies"), (snap) => {
+      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setComps(arr);
+    }, () => setComps([]));
+    return () => unsub();
+  }, []);
+  return comps.length ? comps : SEED_COMPANIES;
+}
+
+// Command palette (Ctrl/Cmd + K)
+function CommandPalette({ open, onClose, quickGo, categories }) {
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); quickGo("palette"); }
+      if (e.key === "Escape" && open) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const items = useMemo(() => {
+    const base = [
+      { id: "dashboard", label: "Open Dashboard", action: () => quickGo("dashboard") },
+      { id: "book", label: "Start a Booking", action: () => quickGo("start-booking") },
+      { id: "saved", label: "View Saved Opportunities", action: () => quickGo("saved") },
+      { id: "admin", label: "Admin", action: () => quickGo("admin") },
+    ];
+    const cats = categories.map((c) => ({ id: c.id, label: `Browse ${c.name}`, action: () => quickGo({ type: "category", id: c.id }) }));
+    return [...base, ...cats].filter((i) => i.label.toLowerCase().includes(q.toLowerCase()));
+  }, [q, categories]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <motion.div className="w-full max-w-2xl rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200" initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }}>
+            <div className="flex items-center gap-2">
+              <Search className="h-5 w-5 text-slate-500" />
+              <Input autoFocus placeholder="Search actions, categories, companies…" value={q} onChange={(e) => setQ(e.target.value)} className="border-0 focus-visible:ring-0" />
+              <Button variant="ghost" onClick={onClose}><X className="h-5 w-5" /></Button>
+            </div>
+            <div className="mt-3 max-h-72 overflow-auto">
+              {items.map((i) => (
+                <button key={i.id} onClick={() => { i.action(); onClose(); }} className="group flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
+                  <span className="text-sm text-slate-700">{i.label}</span>
+                  <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                </button>
+              ))}
+              {!items.length && <div className="p-4 text-center text-sm text-slate-500">No matches</div>}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function Header({ onOpenMenu, onOpenPalette, onOpenAdmin, user, onSignOut }) {
+  return (
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={onOpenMenu}><Menu className="h-5 w-5" /></Button>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-600 text-white"><Briefcase className="h-5 w-5" /></div>
+            <span className="font-semibold tracking-tight text-slate-900">ShadowMe</span>
+            <Badge variant="secondary" className="ml-1">Beta</Badge>
+          </div>
+        </div>
+        <div className="hidden items-center gap-2 lg:flex">
+          <Button variant="ghost">For Students</Button>
+          <Button variant="ghost">For Companies</Button>
+          <Button variant="ghost">Pricing</Button>
+          <Button variant="outline" onClick={onOpenPalette}>
+            <Search className="mr-2 h-4 w-4" /> Quick Find
+          </Button>
+          <Button variant="outline" onClick={onOpenAdmin}><Shield className="mr-2 h-4 w-4" /> Admin</Button>
+          {user ? (
+            <Button onClick={onSignOut}><LogOut className="mr-2 h-4 w-4" /> Sign out</Button>
+          ) : (
+            <></>
+          )}
+        </div>
+        <div className="lg:hidden flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={onOpenPalette}><Search className="h-5 w-5" /></Button>
+          <Button variant="outline" size="icon" onClick={onOpenAdmin}><Shield className="h-5 w-5" /></Button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Hero({ onStartBooking, setQuery }) {
+  return (
+    <section className="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 px-4 py-10 lg:grid-cols-2 lg:py-14">
+        <div>
+          <Badge className="mb-3 bg-emerald-600">Find a placement in ≤ 5 clicks</Badge>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Job shadowing that unlocks your next step</h1>
+          <p className="mt-3 max-w-xl text-slate-600">Browse verified companies, real availability, and simple booking. Built for high school and university students.</p>
+          <div className="mt-5 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input placeholder="Search companies, roles, cities…" onChange={(e) => setQuery(e.target.value)} className="h-12 rounded-2xl pl-10" />
+              <Search className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
+            </div>
+            <Button className="h-12 rounded-2xl" onClick={onStartBooking}>Start booking</Button>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <div className="inline-flex items-center gap-1"><ShieldCheck className="h-4 w-4" /> Verified partners</div>
+            <div className="inline-flex items-center gap-1"><Clock className="h-4 w-4" /> Real‑time dates</div>
+            <div className="inline-flex items-center gap-1"><BadgeCheck className="h-4 w-4" /> Certificates</div>
+          </div>
+        </div>
+        <div>
+          <Card className="rounded-2xl border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg"><Sparkles className="h-5 w-5 text-emerald-600" /> Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <QuickAction icon={GraduationCap} label="Browse fields" hint="1 click" />
+              <QuickAction icon={Building2} label="Top companies" hint="1 click" />
+              <QuickAction icon={Calendar} label="Next 7 days" hint="2 clicks" />
+              <QuickAction icon={MapPin} label="Near me" hint="2 clicks" />
+              <QuickAction icon={Bookmark} label="Saved" hint="1 click" />
+              <QuickAction icon={Settings} label="Preferences" hint="2 clicks" />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function QuickAction({ icon: Icon, label, hint }) {
+  return (
+    <button className="group flex items-center gap-3 rounded-2xl border border-slate-200 p-3 hover:border-emerald-300 hover:bg-emerald-50">
+      <div className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 group-hover:bg-emerald-100">
+        <Icon className="h-5 w-5 text-slate-700" />
+      </div>
+      <div className="flex flex-col text-left">
+        <span className="text-sm font-medium text-slate-900">{label}</span>
+        <span className="text-xs text-slate-500">{hint}</span>
+      </div>
+    </button>
+  );
+}
+
+function Categories({ selected, onSelect }) {
+  const categories = useCategories();
+  return (
+    <section className="mx-auto max-w-7xl px-4 py-8">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold tracking-tight text-slate-900">Explore fields</h2>
+        <div className="text-xs text-slate-500">Tip: Press <kbd className="rounded bg-slate-100 px-1">/</kbd> to search</div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {categories.map((c) => (
+          <button key={c.id} onClick={() => onSelect(c.id)} className={`group rounded-2xl border p-4 text-left transition hover:shadow-sm ${selected === c.id ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+            <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 group-hover:bg-emerald-100">
+              {/* If icon name saved in DB, fallback to generic */}
+              <Layers className="h-5 w-5 text-slate-700" />
+            </div>
+            <div className="text-sm font-medium text-slate-900">{c.name}</div>
+            {/* company count is computed client-side below */}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Filters({ query, setQuery, onlyVerified, setOnlyVerified, minRating, setMinRating, availableSoon, setAvailableSoon }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="relative">
+        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search companies or cities" className="h-10 rounded-xl pl-9" />
+      </div>
+      <Badge variant="secondary" className="rounded-xl">{minRating}+ stars</Badge>
+      <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 p-2">
+        <Label htmlFor="v1" className="text-xs text-slate-600">Verified</Label>
+        <Switch id="v1" checked={onlyVerified} onCheckedChange={setOnlyVerified} />
+      </div>
+      <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 p-2">
+        <Label htmlFor="a1" className="text-xs text-slate-600">Next 14 days</Label>
+        <Switch id="a1" checked={availableSoon} onCheckedChange={setAvailableSoon} />
+      </div>
+    </div>
+  );
+}
+
+function CompanyCard({ c, onOpen }) {
+  return (
+    <Card className="group rounded-2xl border-slate-200">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-slate-900">{c.name}</h3>
+              {c.verified && <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1 h-3 w-3" /> Verified</Badge>}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-slate-600">
+              <span className="inline-flex items-center gap-1"><MapPin className="h-4 w-4" /> {c.location}</span>
+              <span className="inline-flex items-center gap-1"><Star className="h-4 w-4" /> {c.rating}</span>
+              <span className="inline-flex items-center gap-1"><Users className="h-4 w-4" /> {c.seats} seats</span>
+            </div>
+            <p className="mt-3 line-clamp-2 text-sm text-slate-600">{c.description}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {(c.badges || []).map((b) => (
+                <Badge key={b} variant="secondary" className="rounded-xl">{b}</Badge>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <div className="text-xs text-slate-500">Next dates</div>
+            <div className="flex flex-col items-end text-sm text-slate-700">
+              {(c.nextDates || []).slice(0, 2).map((d) => (
+                <div key={d}>{fmt(d)}</div>
+              ))}
+            </div>
+            <Button className="mt-2 rounded-xl" onClick={() => onOpen(c)}>
+              Book in ≤ 3 clicks <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Listings({ selectedCategory, query, setQuery, clickPath }) {
+  const companies = useCompanies();
+  const [onlyVerified, setOnlyVerified] = useState(false);
+  const [minRating, setMinRating] = useState(4.5);
+  const [availableSoon, setAvailableSoon] = useState(true);
+  const [openCompany, setOpenCompany] = useState(null);
+
+  const filtered = useMemo(() => {
+    return companies
+      .filter((c) => (!selectedCategory || c.category === selectedCategory))
+      .filter((c) => c.name.toLowerCase().includes(query.toLowerCase()) || (c.location || "").toLowerCase().includes(query.toLowerCase()))
+      .filter((c) => (onlyVerified ? c.verified : true))
+      .filter((c) => (c.rating || 0) >= minRating)
+      .filter((c) => (availableSoon ? (c.nextDates || []).some((d) => new Date(d) - new Date() <= 14 * 24 * 3600 * 1000) : true));
+  }, [companies, selectedCategory, query, onlyVerified, minRating, availableSoon]);
+
+  return (
+    <section className="mx-auto max-w-7xl px-4 pb-12">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold tracking-tight text-slate-900">Companies</h2>
+        <div className="flex items-center gap-3">
+          <Filters
+            query={query}
+            setQuery={(v) => { setQuery(v); clickPath.inc(); }}
+            onlyVerified={onlyVerified}
+            setOnlyVerified={(v) => { setOnlyVerified(v); clickPath.inc(); }}
+            minRating={minRating}
+            setMinRating={(v) => { setMinRating(v); clickPath.inc(); }}
+            availableSoon={availableSoon}
+            setAvailableSoon={(v) => { setAvailableSoon(v); clickPath.inc(); }}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {filtered.map((c) => (
+          <CompanyCard key={c.id} c={c} onOpen={(co) => { setOpenCompany(co); clickPath.inc(); }} />
+        ))}
+        {!filtered.length && <div className="rounded-2xl border border-dashed p-6 text-center text-slate-500">No results. Try clearing filters.</div>}
+      </div>
+
+      <Dialog open={!!openCompany} onOpenChange={(o) => !o && setOpenCompany(null)}>
+        <DialogContent className="max-w-2xl rounded-2xl">
+          {openCompany && (
+            <div className="space-y-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {openCompany.name}
+                  {openCompany.verified && <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1 h-3 w-3" /> Verified</Badge>}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                <span className="inline-flex items-center gap-1"><MapPin className="h-4 w-4" /> {openCompany.location}</span>
+                <span className="inline-flex items-center gap-1"><Star className="h-4 w-4" /> {openCompany.rating}</span>
+                <span className="inline-flex items-center gap-1"><Users className="h-4 w-4" /> {openCompany.seats} seats</span>
+              </div>
+              <p className="text-slate-700">{openCompany.description}</p>
+              <div className="flex flex-wrap gap-2">
+                {(openCompany.badges || []).map((b) => <Badge key={b} variant="secondary" className="rounded-xl">{b}</Badge>)}
+              </div>
+              <div>
+                <div className="mb-2 text-sm font-medium text-slate-700">Upcoming dates</div>
+                <div className="flex flex-wrap gap-2">
+                  {(openCompany.nextDates || []).map((d) => (
+                    <Button key={d} variant="outline" className="rounded-xl" onClick={() => { window.dispatchEvent(new CustomEvent("shadowme:start-booking", { detail: { company: openCompany, date: d } })); }}>
+                      {fmt(d)}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border p-3 text-sm text-slate-600">
+                <div className="mb-2 font-medium text-slate-800">Contact</div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="inline-flex items-center gap-2"><Mail className="h-4 w-4" /> {openCompany.contacts?.email}</span>
+                  <span className="inline-flex items-center gap-2"><Phone className="h-4 w-4" /> {openCompany.contacts?.phone}</span>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button className="rounded-xl" onClick={() => { window.dispatchEvent(new CustomEvent("shadowme:start-booking", { detail: { company: openCompany } })); }}>
+                  Book now <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+function BookingFlow({ open, onOpenChange, preset }) {
+  const [step, setStep] = useState(1);
+  const [company, setCompany] = useState(preset?.company || null);
+  const [date, setDate] = useState(preset?.date || "");
+  const [notes, setNotes] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => { if (preset) { setCompany(preset.company || null); setDate(preset.date || ""); setStep(1); setSubmitted(false); } }, [preset]);
+
+  const canNext = () => (step === 1 ? !!company : step === 2 ? !!date : true);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full overflow-auto sm:max-w-xl">
+        <SheetHeader>
+          <SheetTitle>Book job shadowing</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4">
+          <div className="mb-4">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Progress</div>
+            <Progress value={(step - 1) * 33} />
+          </div>
+
+          {submitted ? (
+            <div className="space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-emerald-800">
+                <CheckCircle2 className="h-5 w-5" /> Request sent! We emailed the host.
+              </div>
+              <div className="text-sm text-slate-600">You will also find this booking in your Dashboard → Requests.</div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {step === 1 && (
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-slate-800">1. Choose a company</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {useCompanies().map((c) => (
+                      <button key={c.id} onClick={() => setCompany(c)} className={`flex items-center justify-between rounded-xl border p-3 text-left hover:bg-slate-50 ${company?.id === c.id ? "border-emerald-400 bg-emerald-50" : "border-slate-200"}`}>
+                        <div>
+                          <div className="flex items-center gap-2"><span className="font-medium text-slate-900">{c.name}</span>{c.verified && <Badge className="bg-emerald-600">Verified</Badge>}</div>
+                          <div className="text-xs text-slate-500">{c.location} • {c.rating} ★</div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-slate-800">2. Pick a date</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(company?.nextDates || []).map((d) => (
+                      <Button key={d} variant={date === d ? "default" : "outline"} className="rounded-xl" onClick={() => setDate(d)}>{fmt(d)}</Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="space-y-3">
+                  <div className="text-sm font-medium text-slate-800">3. Add a note (optional)</div>
+                  <Textarea placeholder="Share your goals, schedule limits, or accessibility needs…" value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-[120px] rounded-xl" />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <Button variant="outline" className="rounded-xl" onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={step === 1}>Back</Button>
+                {step < 3 ? (
+                  <Button className="rounded-xl" onClick={() => setStep((s) => s + 1)} disabled={!canNext()}>Next</Button>
+                ) : (
+                  <Button className="rounded-xl" onClick={() => setSubmitted(true)} disabled={!company || !date}>Submit request</Button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t border-slate-200 bg-white">
+      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-4 py-10 sm:grid-cols-4">
+        <div>
+          <div className="mb-2 font-semibold">ShadowMe</div>
+          <div className="text-sm text-slate-600">Connecting students with real‑world experience.</div>
+        </div>
+        <div>
+          <div className="mb-2 text-sm font-medium text-slate-800">Product</div>
+          <ul className="space-y-1 text-sm text-slate-600">
+            <li><a href="#">For Students</a></li>
+            <li><a href="#">For Companies</a></li>
+            <li><a href="#">Safety & Verification</a></li>
+          </ul>
+        </div>
+        <div>
+          <div className="mb-2 text-sm font-medium text-slate-800">Resources</div>
+          <ul className="space-y-1 text-sm text-slate-600">
+            <li><a href="#">FAQ</a></li>
+            <li><a href="#">Support</a></li>
+            <li><a href="#">Privacy</a></li>
+          </ul>
+        </div>
+        <div>
+          <div className="mb-2 text-sm font-medium text-slate-800">Contact</div>
+          <div className="text-sm text-slate-600">hello@shadowme.app</div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// 🔐 Admin Gate + Dashboard
+function AdminGate({ open, onClose, user, setUser }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return () => unsub();
+  }, []);
+
+  async function loginEmail(e) {
+    e.preventDefault(); setError("");
+    try { await signInWithEmailAndPassword(auth, email, password); onClose(); }
+    catch (err) { setError(err.message); }
+  }
+  async function loginGoogle() {
+    setError("");
+    try { await signInWithPopup(auth, new GoogleAuthProvider()); onClose(); }
+    catch (err) { setError(err.message); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Admin Sign In</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={loginEmail} className="space-y-3">
+          <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {error && <div className="rounded-md bg-red-50 p-2 text-sm text-red-700">{error}</div>}
+          <div className="flex items-center justify-between">
+            <Button type="submit" className="rounded-xl"><LogIn className="mr-2 h-4 w-4" /> Sign in</Button>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={loginGoogle}>Sign in with Google</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AdminDashboard({ user }) {
+  const categories = useCategories();
+  const companies = useCompanies();
+
+  const [catName, setCatName] = useState("");
+  const [editingCat, setEditingCat] = useState(null);
+
+  const [companyForm, setCompanyForm] = useState({
+    id: null,
+    name: "",
+    category: "",
+    location: "",
+    rating: 4.5,
+    seats: 1,
+    verified: false,
+    badges: "",
+    description: "",
+    email: "",
+    phone: "",
+    nextDates: "",
+  });
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-12">
+        <Card className="rounded-2xl border-slate-200">
+          <CardContent className="p-6">
+            <div className="text-center text-slate-600">Please sign in to access the admin dashboard.</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  async function saveCategory() {
+    if (!catName.trim()) return;
+    if (editingCat) {
+      await updateDoc(doc(db, "categories", editingCat.id), { name: catName });
+      setEditingCat(null);
+    } else {
+      await addDoc(collection(db, "categories"), { name: catName });
+    }
+    setCatName("");
+  }
+  async function editCategory(c) { setEditingCat(c); setCatName(c.name); }
+  async function removeCategory(id) { await deleteDoc(doc(db, "categories", id)); }
+
+  async function saveCompany() {
+    const payload = {
+      name: companyForm.name,
+      category: companyForm.category,
+      location: companyForm.location,
+      rating: Number(companyForm.rating) || 0,
+      seats: Number(companyForm.seats) || 0,
+      verified: !!companyForm.verified,
+      badges: (companyForm.badges || "").split(",").map((s) => s.trim()).filter(Boolean),
+      description: companyForm.description,
+      contacts: { email: companyForm.email, phone: companyForm.phone },
+      nextDates: (companyForm.nextDates || "").split(",").map((s) => s.trim()).filter(Boolean),
+    };
+    if (companyForm.id) {
+      await updateDoc(doc(db, "companies", companyForm.id), payload);
+    } else {
+      await addDoc(collection(db, "companies"), payload);
+    }
+    setCompanyForm({ id: null, name: "", category: "", location: "", rating: 4.5, seats: 1, verified: false, badges: "", description: "", email: "", phone: "", nextDates: "" });
+  }
+  async function editCompany(c) {
+    setCompanyForm({
+      id: c.id,
+      name: c.name || "",
+      category: c.category || "",
+      location: c.location || "",
+      rating: c.rating || 0,
+      seats: c.seats || 0,
+      verified: !!c.verified,
+      badges: (c.badges || []).join(", "),
+      description: c.description || "",
+      email: c.contacts?.email || "",
+      phone: c.contacts?.phone || "",
+      nextDates: (c.nextDates || []).join(", "),
+    });
+  }
+  async function removeCompany(id) { await deleteDoc(doc(db, "companies", id)); }
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-10">
+      <h2 className="mb-6 text-xl font-semibold tracking-tight text-slate-900">Admin Dashboard</h2>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Categories */}
+        <Card className="rounded-2xl border-slate-200">
+          <CardHeader>
+            <CardTitle>Categories</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Input placeholder="Category name" value={catName} onChange={(e) => setCatName(e.target.value)} />
+              <Button onClick={saveCategory}>{editingCat ? "Update" : "Add"}</Button>
+              {editingCat && (
+                <Button variant="outline" onClick={() => { setEditingCat(null); setCatName(""); }}>Cancel</Button>
+              )}
+            </div>
+            <div className="space-y-2">
+              {categories.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-xl border p-3">
+                  <div className="text-sm font-medium text-slate-800">{c.name}</div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => editCategory(c)}><Edit3 className="mr-1 h-4 w-4" /> Edit</Button>
+                    <Button size="sm" variant="outline" onClick={() => removeCategory(c.id)}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Companies */}
+        <Card className="rounded-2xl border-slate-200">
+          <CardHeader>
+            <CardTitle>Companies</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Input placeholder="Name" value={companyForm.name} onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })} />
+              <Input placeholder="Category ID (e.g., it, law)" value={companyForm.category} onChange={(e) => setCompanyForm({ ...companyForm, category: e.target.value })} />
+              <Input placeholder="Location" value={companyForm.location} onChange={(e) => setCompanyForm({ ...companyForm, location: e.target.value })} />
+              <Input placeholder="Rating (0-5)" value={companyForm.rating} onChange={(e) => setCompanyForm({ ...companyForm, rating: e.target.value })} />
+              <Input placeholder="Seats" value={companyForm.seats} onChange={(e) => setCompanyForm({ ...companyForm, seats: e.target.value })} />
+              <div className="flex items-center gap-2 rounded-xl border p-2"><Label className="text-xs text-slate-600">Verified</Label><Switch checked={companyForm.verified} onCheckedChange={(v) => setCompanyForm({ ...companyForm, verified: v })} /></div>
+              <Input placeholder="Badges (comma-separated)" value={companyForm.badges} onChange={(e) => setCompanyForm({ ...companyForm, badges: e.target.value })} />
+              <Input placeholder="Contact Email" value={companyForm.email} onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })} />
+              <Input placeholder="Contact Phone" value={companyForm.phone} onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })} />
+              <Input placeholder="Next Dates (YYYY-MM-DD, comma-separated)" value={companyForm.nextDates} onChange={(e) => setCompanyForm({ ...companyForm, nextDates: e.target.value })} />
+            </div>
+            <Textarea placeholder="Description" value={companyForm.description} onChange={(e) => setCompanyForm({ ...companyForm, description: e.target.value })} />
+            <div className="flex items-center gap-2">
+              <Button onClick={saveCompany}>{companyForm.id ? "Update" : "Add Company"}</Button>
+              {companyForm.id && (
+                <Button variant="outline" onClick={() => setCompanyForm({ id: null, name: "", category: "", location: "", rating: 4.5, seats: 1, verified: false, badges: "", description: "", email: "", phone: "", nextDates: "" })}>Cancel</Button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {companies.map((c) => (
+                <div key={c.id} className="flex flex-col gap-2 rounded-xl border p-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="font-medium text-slate-900">{c.name} {c.verified && <Badge className="ml-2 bg-emerald-600">Verified</Badge>}</div>
+                    <div className="text-xs text-slate-500">{c.category} • {c.location} • {c.rating}★ • {c.seats} seats</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => editCompany(c)}><Edit3 className="mr-1 h-4 w-4" /> Edit</Button>
+                    <Button size="sm" variant="outline" onClick={() => removeCompany(c.id)}><Trash2 className="mr-1 h-4 w-4" /> Delete</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export default function ShadowMeApp() {
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [query, setQuery] = useState("");
+  const [openBooking, setOpenBooking] = useState(false);
+  const [preset, setPreset] = useState(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [user, setUser] = useState(null);
+
+  const clickPath = useClickPath(5);
+
+  useEffect(() => {
+    const handler = (e) => { setPreset(e.detail); setOpenBooking(true); clickPath.setActive(true); };
+    window.addEventListener("shadowme:start-booking", handler);
+    return () => window.removeEventListener("shadowme:start-booking", handler);
+  }, []);
+
+  useEffect(() => {
+    function onSlash(e) { if (e.key === "/") { e.preventDefault(); setPaletteOpen(true); } }
+    window.addEventListener("keydown", onSlash);
+    return () => window.removeEventListener("keydown", onSlash);
+  }, []);
+
+  const quickGo = (dest) => {
+    if (dest === "palette") { setPaletteOpen(true); return; }
+    if (dest === "dashboard") { alert("Dashboard is coming soon."); return; }
+    if (dest === "start-booking") { setOpenBooking(true); clickPath.reset(); return; }
+    if (dest === "saved") { alert("Saved opportunities are empty right now."); return; }
+    if (dest === "admin") { setAdminOpen(true); return; }
+    if (typeof dest === "object" && dest.type === "category") { setSelectedCategory(dest.id); document.getElementById("companies")?.scrollIntoView({ behavior: "smooth" }); return; }
+  };
+
+  return (
+    <div className="min-h-screen bg-white text-slate-900">
+      <Header onOpenMenu={() => {}} onOpenPalette={() => setPaletteOpen(true)} onOpenAdmin={() => setAdminOpen(true)} user={user} onSignOut={() => signOut(auth)} />
+
+      {/* Click-path HUD */}
+      <div className="sticky top-14 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2">
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <Badge className="bg-slate-900">Pro Palette</Badge>
+            <span>Accessible palette: slate, emerald, white</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="rounded-xl">5‑click rule</Badge>
+            <div className="w-40"><Progress value={(clickPath.count / clickPath.max) * 100} /></div>
+            <span className={`${clickPath.count <= 5 ? "text-emerald-700" : "text-red-600"} text-xs`}>{clickPath.count}/{clickPath.max}</span>
+          </div>
+        </div>
+      </div>
+
+      <Hero onStartBooking={() => { setOpenBooking(true); clickPath.reset(); }} setQuery={setQuery} />
+
+      <Categories selected={selectedCategory} onSelect={(id) => { setSelectedCategory(id); clickPath.inc(); document.getElementById("companies")?.scrollIntoView({ behavior: "smooth" }); }} />
+
+      <section id="companies">
+        <Listings selectedCategory={selectedCategory} query={query} setQuery={(v) => setQuery(v)} clickPath={clickPath} />
+      </section>
+
+      <Footer />
+
+      <BookingFlow open={openBooking} onOpenChange={setOpenBooking} preset={preset} />
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} quickGo={quickGo} categories={useCategories()} />
+
+      {/* Floating help */}
+      <div className="fixed bottom-4 right-4 space-y-2">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button className="rounded-full shadow-lg"><BadgeHelp className="mr-2 h-4 w-4" /> Help</Button>
+          </DialogTrigger>
+          <DialogContent className="rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>How to book in ≤ 5 clicks</DialogTitle>
+            </DialogHeader>
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-slate-700">
+              <li>Click a field under <strong>Explore fields</strong>.</li>
+              <li>Select a company.</li>
+              <li>Choose an available date.</li>
+              <li>Submit request. Done!</li>
+            </ol>
+            <div className="mt-3 rounded-xl border p-3 text-xs text-slate-600">Tip: Press <kbd className="rounded bg-slate-100 px-1">⌘/Ctrl</kbd> + <kbd className="rounded bg-slate-100 px-1">K</kbd> to jump anywhere instantly.</div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Admin entry */}
+        <Button variant="outline" className="rounded-full shadow" onClick={() => setAdminOpen(true)}>
+          <Shield className="mr-2 h-4 w-4" /> Admin
+        </Button>
+      </div>
+
+      {/* Admin Sign-in Modal */}
+      <AdminGate open={adminOpen && !user} onClose={() => setAdminOpen(false)} user={user} setUser={setUser} />
+
+      {/* Admin Dashboard (inline below the fold) */}
+      {adminOpen && user && (
+        <div className="border-t border-slate-200 bg-slate-50">
+          <AdminDashboard user={user} />
+        </div>
+      )}
+    </div>
+  );
+}
