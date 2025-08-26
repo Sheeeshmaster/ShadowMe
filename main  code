@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-/* /index.html 200
   Search,
   Building2,
   BadgeCheck,
@@ -55,7 +54,7 @@ import { Textarea } from "@/components/ui/textarea";
 // 2) Create a Firebase project at https://console.firebase.google.com
 // 3) Enable Authentication (Email/Password + optionally Google) and Firestore Database
 // 4) Replace the config below with your Firebase web app config
-import { initializeApp } from "Netlify/app";
+import { initializeApp } from "Firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
