@@ -1,7 +1,4 @@
-ShadowMe/
-indexhtml
-style.css
-script.js
+/*/index.html 200
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
